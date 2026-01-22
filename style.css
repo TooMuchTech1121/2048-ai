@@ -7,6 +7,8 @@ body {
 #video {
   border: 2px solid #333;
   border-radius: 8px;
+  /* Start flipped horizontally to fix mirrored camera */
+  transform: scaleX(-1);
 }
 
 #moveSuggestion {
@@ -19,7 +21,12 @@ body {
   border-radius: 8px;
 }
 
-/* Highlight class that flashes a color */
 .highlight {
   background-color: #ffeb3b; /* bright yellow */
+}
+
+#flipBtn {
+  margin-top: 1rem;
+  padding: 0.5rem 1rem;
+  font-size: 1rem;
 }
