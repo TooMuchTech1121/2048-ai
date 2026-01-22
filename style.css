@@ -5,6 +5,7 @@ body {
 }
 
 #video {
+  transform: scaleX(-1)
   border: 2px solid #333;
   border-radius: 8px;
 }
