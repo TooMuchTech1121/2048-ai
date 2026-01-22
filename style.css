@@ -1,1 +1,16 @@
+body {
+  font-family: Arial, sans-serif;
+  text-align: center;
+  padding: 1rem;
+}
 
+#video {
+  border: 2px solid #333;
+  border-radius: 8px;
+}
+
+#moveSuggestion {
+  margin-top: 1rem;
+  font-size: 1.5rem;
+  font-weight: bold;
+}
