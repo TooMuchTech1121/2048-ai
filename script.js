@@ -3,26 +3,55 @@ const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 const moveSuggestion = document.getElementById('moveSuggestion');
 const flipBtn = document.getElementById('flipBtn');
+const zoomRange = document.getElementById('zoomRange');
 
 let flipped = true; // start flipped
 let lastMove = null;
+let track = null; // video track from camera
+let lastBoard = null;
 
-// Flip camera preview horizontally (toggle)
 function toggleFlip() {
   flipped = !flipped;
   video.style.transform = flipped ? 'scaleX(-1)' : 'scaleX(1)';
 }
 flipBtn.addEventListener('click', toggleFlip);
 
-// Start camera
 navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
   .then(stream => {
     video.srcObject = stream;
+    track = stream.getVideoTracks()[0];
+    setZoom(zoomRange.value);
   })
   .catch(err => {
     alert('Camera access denied or not available.');
     console.error(err);
   });
+
+zoomRange.addEventListener('input', () => {
+  setZoom(zoomRange.value);
+});
+
+function setZoom(zoomValue) {
+  if (!track) return;
+
+  const capabilities = track.getCapabilities();
+  if (!capabilities.zoom) {
+    console.log("Zoom not supported on this device.");
+    return;
+  }
+
+  const constraints = {
+    advanced: [{ zoom: zoomValue }]
+  };
+
+  track.applyConstraints(constraints)
+    .then(() => {
+      console.log(`Zoom set to ${zoomValue}`);
+    })
+    .catch(e => {
+      console.warn('Failed to set zoom:', e);
+    });
+}
 
 const boardSize = 4;
 const tileSize = canvas.width / boardSize;
@@ -78,17 +107,14 @@ async function readBoardFromFrame() {
   for (let r = 0; r < boardSize; r++) {
     let row = [];
     for (let c = 0; c < boardSize; c++) {
-      // Get tile image data
       let imageData = ctx.getImageData(c * tileSize, r * tileSize, tileSize, tileSize);
 
-      // Create temporary canvas for OCR
       const tempCanvas = document.createElement('canvas');
       tempCanvas.width = tileSize;
       tempCanvas.height = tileSize;
       const tempCtx = tempCanvas.getContext('2d');
       tempCtx.putImageData(imageData, 0, 0);
 
-      // OCR: whitelist digits only, single character mode
       const { data: { text } } = await Tesseract.recognize(
         tempCanvas,
         'eng',
@@ -142,12 +168,27 @@ function updateMoveSuggestion(newMove) {
   }
 }
 
+function boardsAreEqual(b1, b2) {
+  if (!b1 || !b2) return false;
+  for (let r = 0; r < boardSize; r++) {
+    for (let c = 0; c < boardSize; c++) {
+      if (b1[r][c] !== b2[r][c]) return false;
+    }
+  }
+  return true;
+}
+
 async function mainLoop() {
   const board = await readBoardFromFrame();
-  console.table(board); // Debug: see detected board in console
-  const move = chooseMove(board);
-  updateMoveSuggestion(move);
-  setTimeout(mainLoop, 2000);
+
+  if (!boardsAreEqual(board, lastBoard)) {
+    console.table(board);
+    const move = chooseMove(board);
+    updateMoveSuggestion(move);
+    lastBoard = board;
+  }
+
+  setTimeout(mainLoop, 500);
 }
 
 video.onloadedmetadata = () => {
