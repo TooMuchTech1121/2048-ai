@@ -2,6 +2,17 @@ const video = document.getElementById('video');
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 const moveSuggestion = document.getElementById('moveSuggestion');
+const flipBtn = document.getElementById('flipBtn');
+
+let flipped = true; // start flipped
+let lastMove = null;
+
+// Flip camera preview horizontally (toggle)
+function toggleFlip() {
+  flipped = !flipped;
+  video.style.transform = flipped ? 'scaleX(-1)' : 'scaleX(1)';
+}
+flipBtn.addEventListener('click', toggleFlip);
 
 // Start camera
 navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
@@ -13,19 +24,53 @@ navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
     console.error(err);
   });
 
-// 2048 board size and tile positions (adjust as needed)
 const boardSize = 4;
 const tileSize = canvas.width / boardSize;
 
-// Simple AI logic (move left only, replace later)
-function chooseMove(board) {
-  // Dummy logic: always move left
-  return "SWIPE LEFT";
+// --------------- 2048 AI logic ---------------------
+
+function slideLeft(row) {
+  row = row.filter(x => x !== 0);
+
+  for (let i = 0; i < row.length - 1; i++) {
+    if (row[i] === row[i + 1]) {
+      row[i] *= 2;
+      row[i + 1] = 0;
+    }
+  }
+
+  row = row.filter(x => x !== 0);
+  while (row.length < 4) row.push(0);
+  return row;
 }
 
-// Extract numbers from the video frame (simplified placeholder)
+function moveLeft(board) {
+  return board.map(slideLeft);
+}
+
+function moveRight(board) {
+  return board.map(row => slideLeft(row.slice().reverse()).reverse());
+}
+
+function transpose(board) {
+  return board[0].map((_, colIndex) => board.map(row => row[colIndex]));
+}
+
+function moveUp(board) {
+  return transpose(moveLeft(transpose(board)));
+}
+
+function moveDown(board) {
+  return transpose(moveRight(transpose(board)));
+}
+
+function countEmpty(board) {
+  return board.reduce((acc, row) => acc + row.filter(x => x === 0).length, 0);
+}
+
+// --------------- OCR and main loop ---------------------
+
 async function readBoardFromFrame() {
-  // Draw video frame to canvas
   ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
   let board = [];
@@ -33,21 +78,28 @@ async function readBoardFromFrame() {
   for (let r = 0; r < boardSize; r++) {
     let row = [];
     for (let c = 0; c < boardSize; c++) {
-      // Crop tile area from canvas
-      const imageData = ctx.getImageData(c * tileSize, r * tileSize, tileSize, tileSize);
+      // Get tile image data
+      let imageData = ctx.getImageData(c * tileSize, r * tileSize, tileSize, tileSize);
 
-      // Create temp canvas for OCR on this tile
+      // Create temporary canvas for OCR
       const tempCanvas = document.createElement('canvas');
       tempCanvas.width = tileSize;
       tempCanvas.height = tileSize;
       const tempCtx = tempCanvas.getContext('2d');
       tempCtx.putImageData(imageData, 0, 0);
 
-      // OCR the tile
-      const { data: { text } } = await Tesseract.recognize(tempCanvas, 'eng', { tessedit_char_whitelist: '0123456789' });
-      const number = parseInt(text.trim()) || 0;
+      // OCR: whitelist digits only, single character mode
+      const { data: { text } } = await Tesseract.recognize(
+        tempCanvas,
+        'eng',
+        {
+          tessedit_char_whitelist: '0123456789',
+          tessedit_pageseg_mode: Tesseract.PSM.SINGLE_CHAR
+        }
+      );
 
-      row.push(number);
+      const num = parseInt(text.trim()) || 0;
+      row.push(num);
     }
     board.push(row);
   }
@@ -55,19 +107,49 @@ async function readBoardFromFrame() {
   return board;
 }
 
-// Main loop: capture frame, read board, decide move, update UI
-async function mainLoop() {
-  const board = await readBoardFromFrame();
-  const move = chooseMove(board);
-  moveSuggestion.textContent = `Move: ${move}`;
+function chooseMove(board) {
+  const moves = {
+    "SWIPE LEFT": moveLeft,
+    "SWIPE RIGHT": moveRight,
+    "SWIPE UP": moveUp,
+    "SWIPE DOWN": moveDown
+  };
 
-  // Debug: log board to console
-  console.table(board);
+  let bestMove = null;
+  let bestScore = -1;
 
-  setTimeout(mainLoop, 2000); // Repeat every 2 seconds
+  for (const [name, fn] of Object.entries(moves)) {
+    const newBoard = fn(board);
+    const score = countEmpty(newBoard);
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestMove = name;
+    }
+  }
+
+  return bestMove;
 }
 
-// Start main loop after camera loads
+function updateMoveSuggestion(newMove) {
+  if (newMove !== lastMove) {
+    moveSuggestion.textContent = `Move: ${newMove}`;
+    moveSuggestion.classList.add('highlight');
+    setTimeout(() => {
+      moveSuggestion.classList.remove('highlight');
+    }, 1000);
+    lastMove = newMove;
+  }
+}
+
+async function mainLoop() {
+  const board = await readBoardFromFrame();
+  console.table(board); // Debug: see detected board in console
+  const move = chooseMove(board);
+  updateMoveSuggestion(move);
+  setTimeout(mainLoop, 2000);
+}
+
 video.onloadedmetadata = () => {
   mainLoop();
 };
