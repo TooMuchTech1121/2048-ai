@@ -7,8 +7,6 @@ body {
 #video {
   border: 2px solid #333;
   border-radius: 8px;
-  /* Start flipped horizontally to fix mirrored camera */
-  transform: scaleX(-1);
 }
 
 #moveSuggestion {
