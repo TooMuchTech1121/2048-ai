@@ -4,11 +4,13 @@ const ctx = canvas.getContext('2d');
 const moveSuggestion = document.getElementById('moveSuggestion');
 const flipBtn = document.getElementById('flipBtn');
 const zoomRange = document.getElementById('zoomRange');
+const explanationDiv = document.getElementById('explanation');
 
 let flipped = true; // start flipped
 let lastMove = null;
 let track = null; // video track from camera
 let lastBoard = null;
+let explanationLog = [];
 
 function toggleFlip() {
   flipped = !flipped;
@@ -97,6 +99,16 @@ function countEmpty(board) {
   return board.reduce((acc, row) => acc + row.filter(x => x === 0).length, 0);
 }
 
+function boardsAreEqual(b1, b2) {
+  if (!b1 || !b2) return false;
+  for (let r = 0; r < boardSize; r++) {
+    for (let c = 0; c < boardSize; c++) {
+      if (b1[r][c] !== b2[r][c]) return false;
+    }
+  }
+  return true;
+}
+
 // --------------- OCR and main loop ---------------------
 
 async function readBoardFromFrame() {
@@ -143,15 +155,28 @@ function chooseMove(board) {
 
   let bestMove = null;
   let bestScore = -1;
+  explanationLog = []; // reset log
 
   for (const [name, fn] of Object.entries(moves)) {
     const newBoard = fn(board);
-    const score = countEmpty(newBoard);
-
-    if (score > bestScore) {
-      bestScore = score;
-      bestMove = name;
+    if (boardsAreEqual(board, newBoard)) {
+      explanationLog.push(`${name}: No change in board, skipped.`);
+      continue;
     }
+    const emptyCount = countEmpty(newBoard);
+
+    explanationLog.push(`${name}: ${emptyCount} empty tiles after move.`);
+
+    if (emptyCount > bestScore) {
+      bestScore = emptyCount;
+      bestMove = name;
+      explanationLog.push(`--> ${name} is currently the best move.`);
+    }
+  }
+
+  if (!bestMove) {
+    explanationLog.push("No valid moves available.");
+    return "NO MOVE";
   }
 
   return bestMove;
@@ -168,14 +193,8 @@ function updateMoveSuggestion(newMove) {
   }
 }
 
-function boardsAreEqual(b1, b2) {
-  if (!b1 || !b2) return false;
-  for (let r = 0; r < boardSize; r++) {
-    for (let c = 0; c < boardSize; c++) {
-      if (b1[r][c] !== b2[r][c]) return false;
-    }
-  }
-  return true;
+function updateExplanation() {
+  explanationDiv.innerHTML = explanationLog.join("\n");
 }
 
 async function mainLoop() {
@@ -185,6 +204,7 @@ async function mainLoop() {
     console.table(board);
     const move = chooseMove(board);
     updateMoveSuggestion(move);
+    updateExplanation();
     lastBoard = board;
   }
 
